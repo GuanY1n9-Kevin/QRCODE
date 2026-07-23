@@ -452,7 +452,7 @@
   <header class="topbar">
     <div class="title-wrap">
       <h1>POLYUNION 二维码解析</h1>
-      <div class="subtitle">网页版 V0.1 · 摄像头与相册均在本机浏览器内处理</div>
+      <div class="subtitle">网页版 V0.2 · iPhone摄像头增强 · 图片不上传</div>
     </div>
     <div class="privacy">图片不上传</div>
   </header>
@@ -479,6 +479,7 @@
       <div class="controls">
         <button id="cameraButton" class="primary">开启摄像头</button>
         <button id="stopButton" class="secondary" disabled>停止摄像头</button>
+        <button id="enhanceButton" class="secondary" disabled>当前画面增强识别</button>
 
         <label class="file-label">
           选择相册图片
@@ -512,8 +513,8 @@
       <pre id="rawText" class="raw">等待扫描……</pre>
 
       <div class="tip">
-        相册识别会尝试：整图、候选区域、旋转、灰度、红通道、对比度和多组阈值。
-        高密度二维码处理可能需要数秒。
+        实时摄像头会逐帧尝试原图、红通道、对比度和多组阈值。
+        对准后仍未自动读取，可点“当前画面增强识别”进行一次高清深度处理。
       </div>
     </section>
   </main>
@@ -521,7 +522,7 @@
 
 <canvas id="workCanvas" class="hidden-canvas"></canvas>
 
-<script src="https://unpkg.com/@zxing/browser@0.1.5"></script>
+<script src="https://unpkg.com/@zxing/browser@0.2.1"></script>
 <script>
 (() => {
   "use strict";
@@ -536,6 +537,7 @@
   const fileInput = document.getElementById("fileInput");
   const cameraButton = document.getElementById("cameraButton");
   const stopButton = document.getElementById("stopButton");
+  const enhanceButton = document.getElementById("enhanceButton");
   const torchButton = document.getElementById("torchButton");
   const copyButton = document.getElementById("copyButton");
   const clearButton = document.getElementById("clearButton");
@@ -549,7 +551,12 @@
   const progressLabel = document.getElementById("progressLabel");
 
   let reader = null;
-  let cameraControls = null;
+  let cameraStream = null;
+  let cameraTrack = null;
+  let cameraLoopTimer = null;
+  let cameraFrameBusy = false;
+  let cameraFrameCount = 0;
+  let cameraModeCursor = 0;
   let scanningWanted = false;
   let torchOn = false;
   let currentCopyText = "";
@@ -593,41 +600,43 @@
 
     try {
       getReader();
-      scanningWanted = true;
       previewImage.style.display = "none";
       video.style.display = "block";
       cameraState.textContent = "正在请求摄像头权限……";
       setStatus("请在浏览器弹窗中允许使用摄像头。");
 
-      const constraints = {
+      cameraStream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
           facingMode: { ideal: "environment" },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
+          width: { ideal: 3840 },
+          height: { ideal: 2160 },
+          frameRate: { ideal: 30, max: 30 }
         }
-      };
+      });
 
-      cameraControls = await reader.decodeFromConstraints(
-        constraints,
-        video,
-        (result, error, controls) => {
-          if (!scanningWanted || !result) return;
-          handleResult(result, "摄像头");
-          scanningWanted = false;
-          try { controls.stop(); } catch (_) {}
-          cameraControls = null;
-          updateCameraButtons(false);
-          cameraState.textContent = "识别成功，摄像头已暂停";
-          continueButton.disabled = false;
-        }
-      );
+      video.srcObject = cameraStream;
+      video.setAttribute("playsinline", "true");
+      await video.play();
+      await waitForVideoReady();
 
+      cameraTrack = cameraStream.getVideoTracks()[0] || null;
+      await requestContinuousFocus();
+
+      scanningWanted = true;
+      cameraFrameBusy = false;
+      cameraFrameCount = 0;
+      cameraModeCursor = 0;
       updateCameraButtons(true);
-      cameraState.textContent = "摄像头运行中";
-      setStatus("让二维码尽量填满方框，保持稳定并等待自动对焦。");
-      torchButton.disabled = !cameraControls ||
-        typeof cameraControls.switchTorch !== "function";
+      updateTorchAvailability();
+
+      const resolution = `${video.videoWidth}×${video.videoHeight}`;
+      cameraState.textContent = `摄像头运行中 · ${resolution}`;
+      setStatus(
+        `增强扫描已启动，实际画面分辨率 ${resolution}。` +
+        "请让二维码填满方框，并保持1至2秒。"
+      );
+      scheduleCameraScan(120);
     } catch (error) {
       stopCamera();
       setStatus(cameraErrorText(error), "bad");
@@ -635,22 +644,257 @@
     }
   }
 
+  function waitForVideoReady() {
+    if (video.readyState >= 2 && video.videoWidth > 0) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("摄像头画面初始化超时")), 8000);
+      const ready = () => {
+        if (video.videoWidth > 0) {
+          clearTimeout(timer);
+          video.removeEventListener("loadedmetadata", ready);
+          resolve();
+        }
+      };
+      video.addEventListener("loadedmetadata", ready);
+    });
+  }
+
+  async function requestContinuousFocus() {
+    if (!cameraTrack?.getCapabilities || !cameraTrack.applyConstraints) return;
+    try {
+      const capabilities = cameraTrack.getCapabilities();
+      if (Array.isArray(capabilities.focusMode) &&
+          capabilities.focusMode.includes("continuous")) {
+        await cameraTrack.applyConstraints({
+          advanced: [{ focusMode: "continuous" }]
+        });
+      }
+    } catch (_) {}
+  }
+
+  function scheduleCameraScan(delay = 320) {
+    if (cameraLoopTimer) clearTimeout(cameraLoopTimer);
+    if (!scanningWanted) return;
+    cameraLoopTimer = setTimeout(scanCameraFrame, delay);
+  }
+
+  async function scanCameraFrame() {
+    if (!scanningWanted || cameraFrameBusy || processingImage) {
+      scheduleCameraScan(260);
+      return;
+    }
+
+    if (video.readyState < 2 || !video.videoWidth) {
+      scheduleCameraScan(260);
+      return;
+    }
+
+    cameraFrameBusy = true;
+    cameraFrameCount++;
+
+    try {
+      const decoded = await decodeCurrentCameraFrame(cameraModeCursor);
+      cameraModeCursor = (cameraModeCursor + 1) % 5;
+
+      if (decoded) {
+        scanningWanted = false;
+        stopCamera();
+        handleResult(decoded.result, "摄像头增强", decoded.stage);
+        cameraState.textContent = "识别成功，摄像头已暂停";
+        continueButton.disabled = false;
+        return;
+      }
+
+      const resolution = `${video.videoWidth}×${video.videoHeight}`;
+      setStatus(
+        `正在增强识别：已检查 ${cameraFrameCount} 帧 · ${resolution} · ` +
+        `${cameraModeName(cameraModeCursor)}。二维码要尽量占满白色方框。`
+      );
+    } catch (error) {
+      setStatus("摄像头画面处理异常：" + safeMessage(error), "warn");
+    } finally {
+      cameraFrameBusy = false;
+      if (scanningWanted) scheduleCameraScan(260);
+    }
+  }
+
+  async function decodeCurrentCameraFrame(mode) {
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    const side = Math.round(Math.min(vw, vh) * .82);
+    const centerRect = {
+      x: Math.max(0, Math.round((vw - side) / 2)),
+      y: Math.max(0, Math.round((vh - side) / 2)),
+      w: side,
+      h: side
+    };
+
+    const useWholeFrame = mode === 4;
+    const rect = useWholeFrame
+      ? { x: 0, y: 0, w: vw, h: vh }
+      : centerRect;
+    const source = captureVideoRect(rect, useWholeFrame ? 1500 : 1350);
+    const variants = buildCameraVariants(source, mode);
+
+    try {
+      for (const variant of variants) {
+        const result = await tryDecodeCanvas(variant.canvas);
+        if (result) {
+          return {
+            result,
+            stage: `${useWholeFrame ? "整幅画面" : "中央区域"} / ${variant.name}`
+          };
+        }
+        await nextFrame();
+      }
+      return null;
+    } finally {
+      source.width = 1;
+      source.height = 1;
+      recycleVariants(variants);
+    }
+  }
+
+  function buildCameraVariants(source, mode) {
+    if (mode === 0) {
+      return [
+        { name: "原图", canvas: cloneCanvas(source) },
+        { name: "红通道", canvas: channelCanvas(source, "red") }
+      ];
+    }
+
+    if (mode === 1) {
+      const red = channelCanvas(source, "red");
+      const contrast = autoContrastCanvas(red);
+      red.width = 1;
+      red.height = 1;
+      return [
+        { name: "红通道增强", canvas: contrast },
+        { name: "红通道阈值145", canvas: thresholdCanvas(contrast, 145) }
+      ];
+    }
+
+    if (mode === 2) {
+      const red = channelCanvas(source, "red");
+      const contrast = autoContrastCanvas(red);
+      red.width = 1;
+      red.height = 1;
+      return [
+        { name: "红通道阈值165", canvas: thresholdCanvas(contrast, 165) },
+        { name: "红通道阈值190", canvas: thresholdCanvas(contrast, 190) }
+      ];
+    }
+
+    if (mode === 3) {
+      const gray = channelCanvas(source, "gray");
+      const contrast = autoContrastCanvas(gray);
+      gray.width = 1;
+      gray.height = 1;
+      return [
+        { name: "灰度增强", canvas: contrast },
+        { name: "灰度Otsu", canvas: thresholdCanvas(contrast, otsuCanvas(contrast)) }
+      ];
+    }
+
+    return [
+      { name: "整图原图", canvas: cloneCanvas(source) },
+      { name: "整图红通道增强", canvas: autoContrastCanvas(channelCanvas(source, "red")) }
+    ];
+  }
+
+  function cameraModeName(mode) {
+    return ["原图/红通道", "红通道增强", "红通道多阈值", "灰度增强", "整幅画面"][mode] || "增强模式";
+  }
+
+  function captureVideoRect(rect, maxEdge) {
+    const scale = Math.min(1, maxEdge / Math.max(rect.w, rect.h));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(rect.w * scale));
+    canvas.height = Math.max(1, Math.round(rect.h * scale));
+    canvas.getContext("2d", { willReadFrequently: true }).drawImage(
+      video,
+      rect.x, rect.y, rect.w, rect.h,
+      0, 0, canvas.width, canvas.height
+    );
+    return canvas;
+  }
+
+  async function enhanceCurrentFrame() {
+    if (!cameraStream || !video.videoWidth || processingImage) {
+      setStatus("请先开启摄像头，再使用当前画面增强识别。", "warn");
+      return;
+    }
+
+    processingImage = true;
+    scanningWanted = false;
+    if (cameraLoopTimer) clearTimeout(cameraLoopTimer);
+    enhanceButton.disabled = true;
+    cameraState.textContent = "正在高清增强当前画面";
+    setStatus("正在抓取当前高清画面并进行深度增强，请保持手机不动……");
+    setProgress(true, 2, "抓取当前画面");
+
+    try {
+      const source = captureVideoRect(
+        { x: 0, y: 0, w: video.videoWidth, h: video.videoHeight },
+        3200
+      );
+      const decoded = await decodeGalleryBitmap(source);
+      source.width = 1;
+      source.height = 1;
+
+      if (decoded) {
+        stopCamera();
+        handleResult(decoded.result, "当前画面增强", decoded.stage);
+        cameraState.textContent = "当前画面识别成功";
+        setProgress(false);
+        continueButton.disabled = false;
+        return;
+      }
+
+      setProgress(false);
+      setStatus(
+        "当前画面仍未识别。请再靠近一点，让二维码占满方框并等画面变清楚后重试。",
+        "bad"
+      );
+      cameraState.textContent = "未识别，实时扫描已恢复";
+      scanningWanted = true;
+      enhanceButton.disabled = false;
+      scheduleCameraScan(200);
+    } catch (error) {
+      setProgress(false);
+      setStatus("当前画面增强失败：" + safeMessage(error), "bad");
+      scanningWanted = true;
+      enhanceButton.disabled = false;
+      scheduleCameraScan(260);
+    } finally {
+      processingImage = false;
+    }
+  }
+
   function stopCamera() {
     scanningWanted = false;
     torchOn = false;
+    cameraFrameBusy = false;
 
-    if (cameraControls) {
-      try { cameraControls.stop(); } catch (_) {}
-      cameraControls = null;
+    if (cameraLoopTimer) {
+      clearTimeout(cameraLoopTimer);
+      cameraLoopTimer = null;
+    }
+
+    if (cameraStream) {
+      for (const track of cameraStream.getTracks()) {
+        try { track.stop(); } catch (_) {}
+      }
+      cameraStream = null;
     }
 
     if (video.srcObject) {
-      for (const track of video.srcObject.getTracks()) {
-        try { track.stop(); } catch (_) {}
-      }
       video.srcObject = null;
     }
 
+    cameraTrack = null;
     updateCameraButtons(false);
     torchButton.textContent = "手电筒";
     cameraState.textContent = "摄像头已停止";
@@ -659,20 +903,32 @@
   function updateCameraButtons(running) {
     cameraButton.disabled = running;
     stopButton.disabled = !running;
-    torchButton.disabled = !running;
+    enhanceButton.disabled = !running;
+    if (!running) torchButton.disabled = true;
+  }
+
+  function updateTorchAvailability() {
+    let supported = false;
+    try {
+      const capabilities = cameraTrack?.getCapabilities?.();
+      supported = !!capabilities?.torch;
+    } catch (_) {}
+    torchButton.disabled = !supported;
   }
 
   async function toggleTorch() {
-    if (!cameraControls || typeof cameraControls.switchTorch !== "function") {
+    if (!cameraTrack?.applyConstraints) {
       setStatus("当前浏览器或摄像头不支持网页控制手电筒。", "warn");
       return;
     }
 
     try {
-      await cameraControls.switchTorch();
       torchOn = !torchOn;
+      await cameraTrack.applyConstraints({ advanced: [{ torch: torchOn }] });
       torchButton.textContent = torchOn ? "关闭手电筒" : "手电筒";
     } catch (error) {
+      torchOn = false;
+      torchButton.textContent = "手电筒";
       setStatus("手电筒开启失败：" + safeMessage(error), "warn");
     }
   }
@@ -1412,6 +1668,7 @@
 
   cameraButton.addEventListener("click", startCamera);
   stopButton.addEventListener("click", stopCamera);
+  enhanceButton.addEventListener("click", enhanceCurrentFrame);
   torchButton.addEventListener("click", toggleTorch);
   continueButton.addEventListener("click", continueScanning);
   fileInput.addEventListener("change", onFileSelected);
@@ -1423,7 +1680,7 @@
   if ("serviceWorker" in navigator &&
       (location.protocol === "https:" || location.hostname === "localhost")) {
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+      navigator.serviceWorker.register("./service-worker.js?v=0.2", { updateViaCache: "none" }).catch(() => {});
     });
   }
 })();
