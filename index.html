@@ -444,7 +444,192 @@
         padding: 10px;
       }
     }
-  </style>
+  
+    body.modal-open {
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+
+    .result-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding:
+        max(10px, env(safe-area-inset-top))
+        max(10px, env(safe-area-inset-right))
+        max(10px, env(safe-area-inset-bottom))
+        max(10px, env(safe-area-inset-left));
+      background: rgba(5, 10, 20, .72);
+      backdrop-filter: blur(8px);
+    }
+
+    .result-overlay.show {
+      display: flex;
+    }
+
+    .outcome-card {
+      width: min(760px, 100%);
+      max-height: 94dvh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      border-radius: 22px;
+      background: #fff;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, .35);
+      animation: outcome-in .18s ease-out;
+    }
+
+    @keyframes outcome-in {
+      from { transform: translateY(18px) scale(.985); opacity: .3; }
+      to { transform: translateY(0) scale(1); opacity: 1; }
+    }
+
+    .outcome-head {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px 16px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .outcome-icon {
+      width: 48px;
+      height: 48px;
+      flex: none;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      color: #fff;
+      font-size: 28px;
+      font-weight: 900;
+    }
+
+    .outcome-card.success .outcome-icon {
+      background: var(--good);
+    }
+
+    .outcome-card.failure .outcome-icon {
+      background: var(--bad);
+    }
+
+    .outcome-heading {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .outcome-heading h2 {
+      margin: 0;
+      font-size: 25px;
+      line-height: 1.2;
+    }
+
+    .outcome-message {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .outcome-scroll {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 12px 14px 4px;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .outcome-rows {
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+    }
+
+    .outcome-raw-title {
+      margin: 13px 0 6px;
+      font-size: 15px;
+      font-weight: 850;
+    }
+
+    .outcome-raw {
+      max-height: 145px;
+      overflow: auto;
+      margin: 0 0 10px;
+      border-radius: 12px;
+      padding: 10px;
+      background: #f6f8fa;
+      color: #334155;
+      font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    .outcome-actions {
+      flex: none;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      padding:
+        11px
+        12px
+        max(12px, env(safe-area-inset-bottom));
+      border-top: 1px solid var(--line);
+      background: rgba(255,255,255,.97);
+    }
+
+    .outcome-actions button {
+      min-width: 0;
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+
+    .result-overlay.failure-mode .outcome-copy {
+      display: none;
+    }
+
+    @media (max-width: 600px) {
+      .result-overlay {
+        align-items: stretch;
+        padding: 0;
+      }
+
+      .outcome-card {
+        width: 100%;
+        max-height: none;
+        height: 100dvh;
+        border-radius: 0;
+      }
+
+      .outcome-head {
+        padding:
+          max(16px, env(safe-area-inset-top))
+          14px
+          12px;
+      }
+
+      .outcome-scroll {
+        padding: 10px 10px 4px;
+      }
+
+      .outcome-actions {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .outcome-actions .outcome-copy {
+        grid-column: 1 / -1;
+        order: -1;
+      }
+
+      .result-overlay.failure-mode .outcome-actions {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+</style>
 </head>
 
 <body>
@@ -452,7 +637,7 @@
   <header class="topbar">
     <div class="title-wrap">
       <h1>POLYUNION 二维码解析</h1>
-      <div class="subtitle">网页版 V0.3 · iPhone摄像头增强 · GBK中文修复</div>
+      <div class="subtitle">网页版 V0.4 · 扫描后立即显示结果</div>
     </div>
     <div class="privacy">图片不上传</div>
   </header>
@@ -479,7 +664,7 @@
       <div class="controls">
         <button id="cameraButton" class="primary">开启摄像头</button>
         <button id="stopButton" class="secondary" disabled>停止摄像头</button>
-        <button id="enhanceButton" class="secondary" disabled>当前画面增强识别</button>
+        <button id="enhanceButton" class="secondary" disabled>立即识别当前画面</button>
 
         <label class="file-label">
           选择相册图片
@@ -520,6 +705,31 @@
   </main>
 </div>
 
+
+<div id="resultOverlay" class="result-overlay" aria-hidden="true">
+  <section id="outcomeCard" class="outcome-card success" role="dialog" aria-modal="true">
+    <header class="outcome-head">
+      <div id="outcomeIcon" class="outcome-icon">✓</div>
+      <div class="outcome-heading">
+        <h2 id="outcomeTitle">识别成功</h2>
+        <p id="outcomeMessage" class="outcome-message"></p>
+      </div>
+    </header>
+
+    <div class="outcome-scroll">
+      <div id="outcomeRows" class="outcome-rows"></div>
+      <div id="outcomeRawTitle" class="outcome-raw-title">二维码原始内容</div>
+      <pre id="outcomeRaw" class="outcome-raw"></pre>
+    </div>
+
+    <footer class="outcome-actions">
+      <button id="outcomeCopyButton" class="secondary outcome-copy">复制结果</button>
+      <button id="outcomeCloseButton" class="secondary">留在结果页</button>
+      <button id="outcomeContinueButton" class="primary">继续扫描</button>
+    </footer>
+  </section>
+</div>
+
 <canvas id="workCanvas" class="hidden-canvas"></canvas>
 
 <script src="https://unpkg.com/@zxing/browser@0.2.1"></script>
@@ -549,6 +759,17 @@
   const progressWrap = document.getElementById("progressWrap");
   const progressBar = document.getElementById("progressBar");
   const progressLabel = document.getElementById("progressLabel");
+  const resultOverlay = document.getElementById("resultOverlay");
+  const outcomeCard = document.getElementById("outcomeCard");
+  const outcomeIcon = document.getElementById("outcomeIcon");
+  const outcomeTitle = document.getElementById("outcomeTitle");
+  const outcomeMessage = document.getElementById("outcomeMessage");
+  const outcomeRows = document.getElementById("outcomeRows");
+  const outcomeRawTitle = document.getElementById("outcomeRawTitle");
+  const outcomeRaw = document.getElementById("outcomeRaw");
+  const outcomeCopyButton = document.getElementById("outcomeCopyButton");
+  const outcomeCloseButton = document.getElementById("outcomeCloseButton");
+  const outcomeContinueButton = document.getElementById("outcomeContinueButton");
 
   let reader = null;
   let cameraStream = null;
@@ -854,20 +1075,18 @@
       }
 
       setProgress(false);
-      setStatus(
-        "当前画面仍未识别。请再靠近一点，让二维码占满方框并等画面变清楚后重试。",
-        "bad"
-      );
-      cameraState.textContent = "未识别，实时扫描已恢复";
-      scanningWanted = true;
-      enhanceButton.disabled = false;
-      scheduleCameraScan(200);
+      const failureMessage =
+        "当前画面没有读到二维码。请再靠近一点，让二维码占满方框，并等自动对焦清楚后重试。";
+      setStatus(failureMessage, "bad");
+      cameraState.textContent = "本次未识别";
+      stopCamera();
+      showFailureOutcome(failureMessage);
     } catch (error) {
       setProgress(false);
-      setStatus("当前画面增强失败：" + safeMessage(error), "bad");
-      scanningWanted = true;
-      enhanceButton.disabled = false;
-      scheduleCameraScan(260);
+      const failureMessage = "当前画面处理失败：" + safeMessage(error);
+      setStatus(failureMessage, "bad");
+      stopCamera();
+      showFailureOutcome(failureMessage);
     } finally {
       processingImage = false;
     }
@@ -1465,11 +1684,12 @@
     renderResult(text);
     continueButton.disabled = false;
 
-    const detail = stage ? `，处理方式：${stage}` : "";
-    setStatus(`${source}识别成功${detail}。`, "good");
+    const detail = stage ? `处理方式：${stage}` : "二维码内容已读取";
+    setStatus(`${source}识别成功。`, "good");
+    showSuccessOutcome(text, source, detail);
 
     if (navigator.vibrate) {
-      try { navigator.vibrate(80); } catch (_) {}
+      try { navigator.vibrate([70, 45, 90]); } catch (_) {}
     }
   }
 
@@ -1602,6 +1822,94 @@
     return score;
   }
 
+  function showSuccessOutcome(text, source, detail) {
+    outcomeCard.className = "outcome-card success";
+    resultOverlay.className = "result-overlay show";
+    resultOverlay.setAttribute("aria-hidden", "false");
+    outcomeIcon.textContent = "✓";
+    outcomeTitle.textContent = "识别成功";
+    outcomeMessage.textContent = `${source}已读取二维码。${detail}`;
+    outcomeRawTitle.style.display = "block";
+    outcomeRaw.style.display = "block";
+    outcomeRaw.textContent = text;
+    renderOutcomeRows(text);
+    outcomeCopyButton.style.display = "";
+    outcomeCloseButton.textContent = "查看结果";
+    outcomeContinueButton.textContent = "继续扫描";
+    document.body.classList.add("modal-open");
+    window.scrollTo(0, 0);
+  }
+
+  function showFailureOutcome(message) {
+    outcomeCard.className = "outcome-card failure";
+    resultOverlay.className = "result-overlay show failure-mode";
+    resultOverlay.setAttribute("aria-hidden", "false");
+    outcomeIcon.textContent = "×";
+    outcomeTitle.textContent = "没有识别到";
+    outcomeMessage.textContent = message;
+    outcomeRows.innerHTML = "";
+    addOutcomeRow("结果", "本次画面未读到有效二维码");
+    addOutcomeRow("建议", "让二维码占满白色方框，等画面清楚后再点“立即识别当前画面”");
+    outcomeRawTitle.style.display = "none";
+    outcomeRaw.style.display = "none";
+    outcomeCopyButton.style.display = "none";
+    outcomeCloseButton.textContent = "返回画面";
+    outcomeContinueButton.textContent = "重新扫描";
+    document.body.classList.add("modal-open");
+    window.scrollTo(0, 0);
+
+    if (navigator.vibrate) {
+      try { navigator.vibrate(120); } catch (_) {}
+    }
+  }
+
+  function renderOutcomeRows(text) {
+    outcomeRows.innerHTML = "";
+    const parsed = parseLooseJson(text);
+
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      for (const key of EXPECTED_KEYS) {
+        addOutcomeRow(key, displayValue(parsed[key]));
+      }
+
+      for (const [key, rawValue] of Object.entries(parsed)) {
+        if (!EXPECTED_KEYS.includes(key)) {
+          addOutcomeRow(key, displayValue(rawValue));
+        }
+      }
+      return;
+    }
+
+    addOutcomeRow("解析结果", text);
+  }
+
+  function addOutcomeRow(field, value) {
+    const row = document.createElement("div");
+    row.className = "row";
+
+    const fieldElement = document.createElement("div");
+    fieldElement.className = "field";
+    fieldElement.textContent = field;
+
+    const valueElement = document.createElement("div");
+    valueElement.className = "value";
+    valueElement.textContent = value;
+
+    row.append(fieldElement, valueElement);
+    outcomeRows.appendChild(row);
+  }
+
+  function closeOutcome() {
+    resultOverlay.className = "result-overlay";
+    resultOverlay.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("modal-open");
+  }
+
+  function continueFromOutcome() {
+    closeOutcome();
+    startCamera();
+  }
+
   function renderResult(text) {
     rawText.textContent = text;
     rows.innerHTML = "";
@@ -1699,6 +2007,7 @@
   }
 
   function clearResult() {
+    closeOutcome();
     currentCopyText = "";
     lastText = "";
     rawText.textContent = "等待扫描……";
@@ -1734,13 +2043,20 @@
   fileInput.addEventListener("change", onFileSelected);
   copyButton.addEventListener("click", copyResult);
   clearButton.addEventListener("click", clearResult);
+  outcomeCopyButton.addEventListener("click", copyResult);
+  outcomeCloseButton.addEventListener("click", closeOutcome);
+  outcomeContinueButton.addEventListener("click", continueFromOutcome);
+
+  resultOverlay.addEventListener("click", event => {
+    if (event.target === resultOverlay) closeOutcome();
+  });
 
   window.addEventListener("pagehide", stopCamera);
 
   if ("serviceWorker" in navigator &&
       (location.protocol === "https:" || location.hostname === "localhost")) {
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js?v=0.3", { updateViaCache: "none" }).catch(() => {});
+      navigator.serviceWorker.register("./service-worker.js?v=0.4", { updateViaCache: "none" }).catch(() => {});
     });
   }
 })();
