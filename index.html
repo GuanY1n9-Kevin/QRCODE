@@ -514,9 +514,9 @@
 <div class="app">
   <header class="topbar">
     <h1>POLYUNION 二维码解析</h1>
-    <div id="engineBadge" class="engine-badge">正在加载C++引擎</div>
+    <div id="engineBadge" class="engine-badge">正在加载本地C++引擎</div>
   </header>
-  <div class="version">网页版 V0.5 · ZXing-C++ WebAssembly · 优先成功率和速度</div>
+  <div class="version">网页版 V0.6 · 本地ZXing-C++与OpenCV · 不依赖外部CDN</div>
 
   <main class="layout">
     <section class="panel camera-panel">
@@ -550,7 +550,7 @@
         <button id="clearButton" class="danger">清空</button>
       </div>
 
-      <div id="status" class="status">第一次打开会加载约1MB的ZXing-C++引擎。加载完成后再开始扫描。</div>
+      <div id="status" class="status">识别引擎从本网站仓库本地加载。首次部署需先让GitHub Actions准备本地引擎文件。</div>
 
       <div id="progressWrap" class="progress-wrap">
         <div class="progress-track"><div id="progressBar" class="progress-bar"></div></div>
@@ -599,7 +599,7 @@
   </section>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.2/dist/iife/reader/index.js"></script>
+<script src="./vendor/zxing/index.js"></script>
 <script>
 (() => {
   "use strict";
@@ -699,18 +699,31 @@
 
     engineReadyPromise = (async () => {
       if (!window.ZXingWASM?.readBarcodes) {
-        throw new Error("ZXing-C++ WebAssembly脚本没有加载成功");
+        throw new Error("本地ZXing-C++文件尚未准备。请在GitHub Actions运行“Prepare local scanner engines”后刷新页面。");
       }
 
       engineBadge.textContent = "正在初始化C++引擎";
       setStatus("正在下载并初始化ZXing-C++ WebAssembly识别引擎……");
 
       if (typeof ZXingWASM.prepareZXingModule === "function") {
-        await ZXingWASM.prepareZXingModule({ fireImmediately: true });
+        const localWasmUrl = new URL(
+          "./vendor/zxing/zxing_reader.wasm",
+          window.location.href
+        ).href;
+
+        await ZXingWASM.prepareZXingModule({
+          overrides: {
+            locateFile(path, prefix) {
+              if (path.endsWith(".wasm")) return localWasmUrl;
+              return prefix + path;
+            }
+          },
+          fireImmediately: true
+        });
       }
 
-      engineBadge.textContent = "ZXing-C++引擎已就绪";
-      setStatus("C++识别引擎已就绪。点击“开始扫描”。", "good");
+      engineBadge.textContent = "本地ZXing-C++已就绪";
+      setStatus("本地C++识别引擎已就绪。后续扫码不依赖外部CDN。", "good");
       return true;
     })().catch(error => {
       engineBadge.textContent = "C++引擎加载失败";
@@ -747,6 +760,18 @@
 
       window.Module = {
         ...oldModule,
+        locateFile(path, prefix) {
+          if (path.endsWith(".wasm")) {
+            return new URL(
+              "./vendor/opencv/opencv_js.wasm",
+              window.location.href
+            ).href;
+          }
+          if (typeof oldModule.locateFile === "function") {
+            return oldModule.locateFile(path, prefix);
+          }
+          return prefix + path;
+        },
         onRuntimeInitialized() {
           try {
             if (typeof oldCallback === "function") oldCallback();
@@ -757,7 +782,7 @@
       };
 
       const script = document.createElement("script");
-      script.src = "https://docs.opencv.org/4.x/opencv.js";
+      script.src = "./vendor/opencv/opencv.js";
       script.async = true;
       script.onload = async () => {
         try {
@@ -771,7 +796,7 @@
           reject(error);
         }
       };
-      script.onerror = () => reject(new Error("OpenCV.js下载失败"));
+      script.onerror = () => reject(new Error("本地OpenCV.js文件尚未准备"));
       document.head.appendChild(script);
 
       setTimeout(() => {
@@ -2611,7 +2636,7 @@
       (location.protocol === "https:" || location.hostname === "localhost")) {
     window.addEventListener("load", () => {
       navigator.serviceWorker.register(
-        "./service-worker.js?v=0.5",
+        "./service-worker.js?v=0.6",
         { updateViaCache: "none" }
       ).catch(() => {});
     });
