@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="二维码解析">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <title>POLYUNION 二维码解析 V0.7</title>
+  <title>POLYUNION 二维码解析 V0.8</title>
 
   <style>
     :root {
@@ -516,7 +516,7 @@
     <h1>POLYUNION 二维码解析</h1>
     <div id="engineBadge" class="engine-badge">正在加载本地C++引擎</div>
   </header>
-  <div class="version">网页版 V0.7 · 继续扫描修复 · 本地ZXing-C++与OpenCV</div>
+  <div class="version">网页版 V0.8 · 启动卡死修复 · OpenCV按需加载</div>
 
   <main class="layout">
     <section class="panel camera-panel">
@@ -682,7 +682,11 @@
 
   showWaiting();
   prewarmEngine();
-  setTimeout(() => preloadOpenCv(), 1200);
+
+  // Do not preload OpenCV.js during page startup.
+  // On iPhone Safari the locally cached OpenCV file can be parsed immediately
+  // and occupy the main UI thread for several seconds, making every button
+  // appear frozen. It is now loaded only when deep decoding actually needs it.
 
   function setStatus(message, type = "") {
     status.textContent = message;
@@ -724,7 +728,7 @@
       }
 
       engineBadge.textContent = "本地ZXing-C++已就绪";
-      setStatus("本地C++识别引擎已就绪。后续扫码不依赖外部CDN。", "good");
+      setStatus("本地ZXing-C++已就绪，可以立即开始扫描；OpenCV仅在深度识别时按需加载。", "good");
       return true;
     })().catch(error => {
       engineBadge.textContent = "C++引擎加载失败";
@@ -1106,7 +1110,7 @@
     if (isExpired(started, deadlineMs, token)) return bestHit;
 
     // Step 3: port of the successful Python/OpenCV perspective pipeline.
-    update("加载OpenCV透视校正引擎", 42);
+    update("按需加载OpenCV透视校正引擎，首次可能需要数秒", 42);
     let cvReady = false;
     try {
       await preloadOpenCv();
@@ -2661,7 +2665,7 @@
       (location.protocol === "https:" || location.hostname === "localhost")) {
     window.addEventListener("load", () => {
       navigator.serviceWorker.register(
-        "./service-worker.js?v=0.7",
+        "./service-worker.js?v=0.8",
         { updateViaCache: "none" }
       ).catch(() => {});
     });

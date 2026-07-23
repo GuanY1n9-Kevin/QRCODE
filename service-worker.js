@@ -1,4 +1,5 @@
-const CACHE_NAME = "polyunion-qr-web-v0.7";
+const CACHE_NAME = "polyunion-qr-web-v0.8";
+
 const APP_ASSETS = [
   "./",
   "./index.html",
@@ -7,11 +8,9 @@ const APP_ASSETS = [
   "./icons/icon-512.png"
 ];
 
-const ENGINE_ASSETS = [
+const STARTUP_ENGINE_ASSETS = [
   "./vendor/zxing/index.js",
-  "./vendor/zxing/zxing_reader.wasm",
-  "./vendor/opencv/opencv.js",
-  "./vendor/opencv/opencv_js.wasm"
+  "./vendor/zxing/zxing_reader.wasm"
 ];
 
 async function cacheAvailableAssets(cache, urls) {
@@ -29,7 +28,7 @@ self.addEventListener("install", event => {
     caches.open(CACHE_NAME)
       .then(async cache => {
         await cacheAvailableAssets(cache, APP_ASSETS);
-        await cacheAvailableAssets(cache, ENGINE_ASSETS);
+        await cacheAvailableAssets(cache, STARTUP_ENGINE_ASSETS);
       })
       .then(() => self.skipWaiting())
   );
@@ -51,12 +50,16 @@ self.addEventListener("fetch", event => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) return;
 
-  const isEngine = url.pathname.includes("/vendor/");
+  const isVendorAsset = url.pathname.includes("/vendor/");
 
-  if (isEngine) {
+  if (isVendorAsset) {
+    // Engine files are cached only when they are actually requested.
+    // This keeps the opening screen responsive and avoids parsing OpenCV
+    // before the user starts a deep scan.
     event.respondWith(
       caches.match(event.request).then(cached => {
         if (cached) return cached;
+
         return fetch(event.request).then(response => {
           if (response.ok) {
             const copy = response.clone();
@@ -71,6 +74,7 @@ self.addEventListener("fetch", event => {
     return;
   }
 
+  // Network-first for HTML and app shell so updates take effect quickly.
   event.respondWith(
     fetch(event.request)
       .then(response => {
