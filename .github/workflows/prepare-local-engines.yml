@@ -1,0 +1,95 @@
+name: Prepare local scanner engines
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/prepare-local-engines.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prepare-local-scanner-engines
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download pinned scanner engines
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p vendor/zxing vendor/opencv
+
+          curl --fail --location --retry 5 --retry-delay 2 \
+            "https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.2/dist/iife/reader/index.js" \
+            --output vendor/zxing/index.js
+
+          curl --fail --location --retry 5 --retry-delay 2 \
+            "https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.2/dist/reader/zxing_reader.wasm" \
+            --output vendor/zxing/zxing_reader.wasm
+
+          curl --fail --location --retry 5 --retry-delay 2 \
+            "https://docs.opencv.org/4.13.0/opencv.js" \
+            --output vendor/opencv/opencv.js
+
+          if curl --fail --location --retry 3 --retry-delay 2 \
+            "https://docs.opencv.org/4.13.0/opencv_js.wasm" \
+            --output vendor/opencv/opencv_js.wasm; then
+            echo "OpenCV sidecar WASM downloaded."
+          else
+            rm -f vendor/opencv/opencv_js.wasm
+            echo "OpenCV build is self-contained; no sidecar WASM was published."
+          fi
+
+          curl --fail --location --retry 5 --retry-delay 2 \
+            "https://cdn.jsdelivr.net/npm/zxing-wasm@3.1.2/LICENSE" \
+            --output vendor/zxing/LICENSE.txt
+
+          curl --fail --location --retry 5 --retry-delay 2 \
+            "https://raw.githubusercontent.com/opencv/opencv/4.13.0/LICENSE" \
+            --output vendor/opencv/LICENSE.txt
+
+      - name: Verify downloaded files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test "$(wc -c < vendor/zxing/index.js)" -gt 30000
+          test "$(wc -c < vendor/zxing/zxing_reader.wasm)" -gt 900000
+          test "$(wc -c < vendor/opencv/opencv.js)" -gt 5000000
+
+          head -c 4 vendor/zxing/zxing_reader.wasm | od -An -tx1 | grep -qi "00 61 73 6d"
+
+          find vendor -type f -print0 | sort -z | xargs -0 sha256sum > vendor/CHECKSUMS.sha256
+          cat vendor/CHECKSUMS.sha256
+
+      - name: Commit local engine files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add vendor
+
+          if git diff --cached --quiet; then
+            echo "Local engine files are already current."
+            exit 0
+          fi
+
+          git commit -m "Add pinned local QR scanner engines"
+          git push origin HEAD:main
