@@ -1,0 +1,1432 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="二维码解析">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <title>POLYUNION 二维码解析</title>
+
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef2f7;
+      --panel: #ffffff;
+      --ink: #111827;
+      --muted: #64748b;
+      --line: #dbe2ea;
+      --primary: #1565c0;
+      --primary-dark: #0d47a1;
+      --good: #168447;
+      --warn: #b45309;
+      --bad: #b42318;
+      --camera-bg: #05070b;
+      --radius: 16px;
+      --shadow: 0 8px 28px rgba(15, 23, 42, .08);
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    html, body {
+      min-height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+                   "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    body {
+      padding:
+        max(10px, env(safe-area-inset-top))
+        max(10px, env(safe-area-inset-right))
+        max(14px, env(safe-area-inset-bottom))
+        max(10px, env(safe-area-inset-left));
+    }
+
+    button, input {
+      font: inherit;
+    }
+
+    button {
+      min-height: 46px;
+      border: 0;
+      border-radius: 12px;
+      padding: 10px 15px;
+      font-weight: 750;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    button:disabled {
+      opacity: .48;
+      cursor: default;
+    }
+
+    .app {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 4px 2px 12px;
+    }
+
+    .title-wrap {
+      min-width: 0;
+      flex: 1;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(23px, 4.8vw, 34px);
+      line-height: 1.15;
+    }
+
+    .subtitle {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .privacy {
+      flex: none;
+      border-radius: 999px;
+      padding: 7px 10px;
+      background: #e7f7ed;
+      color: #116b38;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: minmax(0, .93fr) minmax(360px, 1.07fr);
+      gap: 12px;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .camera-panel {
+      display: flex;
+      flex-direction: column;
+      min-height: 560px;
+    }
+
+    .camera-box {
+      position: relative;
+      min-height: 360px;
+      flex: 1;
+      overflow: hidden;
+      background: var(--camera-bg);
+    }
+
+    video, .preview-image {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: contain;
+      background: var(--camera-bg);
+    }
+
+    .preview-image {
+      position: absolute;
+      inset: 0;
+      display: none;
+    }
+
+    .scan-mask {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    .scan-frame {
+      position: absolute;
+      width: min(70%, 430px);
+      aspect-ratio: 1 / 1;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -52%);
+      border-radius: 10px;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, .33);
+    }
+
+    .corner {
+      position: absolute;
+      width: 44px;
+      height: 44px;
+      border-color: #fff;
+      border-style: solid;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,.7));
+    }
+
+    .corner.tl { left: 0; top: 0; border-width: 4px 0 0 4px; }
+    .corner.tr { right: 0; top: 0; border-width: 4px 4px 0 0; }
+    .corner.bl { left: 0; bottom: 0; border-width: 0 0 4px 4px; }
+    .corner.br { right: 0; bottom: 0; border-width: 0 4px 4px 0; }
+
+    .frame-hint {
+      position: absolute;
+      left: 50%;
+      bottom: -38px;
+      transform: translateX(-50%);
+      white-space: nowrap;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 750;
+      text-shadow: 0 1px 3px #000;
+    }
+
+    .camera-state {
+      position: absolute;
+      left: 12px;
+      top: 12px;
+      max-width: calc(100% - 24px);
+      border-radius: 999px;
+      padding: 7px 11px;
+      color: #fff;
+      background: rgba(0,0,0,.58);
+      backdrop-filter: blur(7px);
+      font-size: 13px;
+      font-weight: 750;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      padding: 10px;
+    }
+
+    .primary {
+      background: var(--primary);
+      color: #fff;
+    }
+
+    .primary:active {
+      background: var(--primary-dark);
+    }
+
+    .secondary {
+      background: #edf2f7;
+      color: #253045;
+    }
+
+    .danger {
+      background: #fff0ee;
+      color: var(--bad);
+    }
+
+    .file-label {
+      min-height: 46px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      padding: 10px 15px;
+      color: #fff;
+      background: #6941c6;
+      font-weight: 800;
+      cursor: pointer;
+      text-align: center;
+    }
+
+    .file-label input {
+      display: none;
+    }
+
+    .status {
+      margin: 0 10px 10px;
+      min-height: 44px;
+      display: flex;
+      align-items: center;
+      border-radius: 11px;
+      padding: 10px 12px;
+      color: #334155;
+      background: #f5f7fa;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+
+    .status.good {
+      background: #eaf8ef;
+      color: var(--good);
+    }
+
+    .status.warn {
+      background: #fff7e7;
+      color: var(--warn);
+    }
+
+    .status.bad {
+      background: #fff0ee;
+      color: var(--bad);
+    }
+
+    .progress-wrap {
+      display: none;
+      margin: 0 10px 10px;
+    }
+
+    .progress-track {
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #e5eaf0;
+    }
+
+    .progress-bar {
+      width: 0%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #1565c0, #7c3aed);
+      transition: width .18s ease;
+    }
+
+    .progress-label {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .result-panel {
+      min-height: 560px;
+      padding: 14px;
+    }
+
+    .result-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .result-head h2 {
+      flex: 1;
+      margin: 0;
+      font-size: 23px;
+    }
+
+    .small-button {
+      min-height: 38px;
+      padding: 7px 11px;
+      font-size: 13px;
+    }
+
+    .rows {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 116px minmax(0, 1fr);
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .row:last-child {
+      border-bottom: 0;
+    }
+
+    .field, .value {
+      min-width: 0;
+      padding: 11px 12px;
+      line-height: 1.52;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    .field {
+      background: #f7f9fb;
+      color: #334155;
+      font-weight: 800;
+    }
+
+    .value {
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    .raw-title {
+      margin: 15px 0 7px;
+      font-size: 17px;
+      font-weight: 800;
+    }
+
+    .raw {
+      min-height: 88px;
+      max-height: 230px;
+      overflow: auto;
+      margin: 0;
+      border-radius: 12px;
+      padding: 11px 12px;
+      background: #f6f8fa;
+      color: #334155;
+      font: 13px/1.52 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    .tip {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .hidden-canvas {
+      position: fixed;
+      left: -10000px;
+      top: -10000px;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    @media (max-width: 820px) {
+      body {
+        padding-left: max(7px, env(safe-area-inset-left));
+        padding-right: max(7px, env(safe-area-inset-right));
+      }
+
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .camera-panel, .result-panel {
+        min-height: auto;
+      }
+
+      .camera-box {
+        min-height: min(72vw, 440px);
+      }
+
+      .privacy {
+        display: none;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .controls {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .row {
+        grid-template-columns: 96px minmax(0, 1fr);
+      }
+
+      .field, .value {
+        padding: 10px 9px;
+        font-size: 15px;
+      }
+
+      .result-panel {
+        padding: 10px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="title-wrap">
+      <h1>POLYUNION 二维码解析</h1>
+      <div class="subtitle">网页版 V0.1 · 摄像头与相册均在本机浏览器内处理</div>
+    </div>
+    <div class="privacy">图片不上传</div>
+  </header>
+
+  <main class="layout">
+    <section class="panel camera-panel">
+      <div class="camera-box" id="cameraBox">
+        <video id="video" muted playsinline></video>
+        <img id="previewImage" class="preview-image" alt="所选图片预览">
+
+        <div class="scan-mask">
+          <div class="scan-frame">
+            <i class="corner tl"></i>
+            <i class="corner tr"></i>
+            <i class="corner bl"></i>
+            <i class="corner br"></i>
+            <div class="frame-hint">二维码尽量填满方框</div>
+          </div>
+        </div>
+
+        <div class="camera-state" id="cameraState">等待开启摄像头</div>
+      </div>
+
+      <div class="controls">
+        <button id="cameraButton" class="primary">开启摄像头</button>
+        <button id="stopButton" class="secondary" disabled>停止摄像头</button>
+
+        <label class="file-label">
+          选择相册图片
+          <input id="fileInput" type="file" accept="image/*">
+        </label>
+
+        <button id="torchButton" class="secondary" disabled>手电筒</button>
+        <button id="copyButton" class="secondary">复制结果</button>
+        <button id="clearButton" class="danger">清空</button>
+      </div>
+
+      <div id="status" class="status">打开正式 HTTPS 网址后，点击“开启摄像头”或“选择相册图片”。</div>
+
+      <div id="progressWrap" class="progress-wrap">
+        <div class="progress-track">
+          <div id="progressBar" class="progress-bar"></div>
+        </div>
+        <div id="progressLabel" class="progress-label"></div>
+      </div>
+    </section>
+
+    <section class="panel result-panel">
+      <div class="result-head">
+        <h2>字段结果</h2>
+        <button id="continueButton" class="small-button secondary" disabled>继续扫描</button>
+      </div>
+
+      <div id="rows" class="rows"></div>
+
+      <div class="raw-title">二维码原始内容</div>
+      <pre id="rawText" class="raw">等待扫描……</pre>
+
+      <div class="tip">
+        相册识别会尝试：整图、候选区域、旋转、灰度、红通道、对比度和多组阈值。
+        高密度二维码处理可能需要数秒。
+      </div>
+    </section>
+  </main>
+</div>
+
+<canvas id="workCanvas" class="hidden-canvas"></canvas>
+
+<script src="https://unpkg.com/@zxing/browser@0.1.5"></script>
+<script>
+(() => {
+  "use strict";
+
+  const EXPECTED_KEYS = [
+    "工作单号", "序号", "制令单号", "客户代号",
+    "排单日期", "品名规格", "颜色", "烫带说明"
+  ];
+
+  const video = document.getElementById("video");
+  const previewImage = document.getElementById("previewImage");
+  const fileInput = document.getElementById("fileInput");
+  const cameraButton = document.getElementById("cameraButton");
+  const stopButton = document.getElementById("stopButton");
+  const torchButton = document.getElementById("torchButton");
+  const copyButton = document.getElementById("copyButton");
+  const clearButton = document.getElementById("clearButton");
+  const continueButton = document.getElementById("continueButton");
+  const cameraState = document.getElementById("cameraState");
+  const status = document.getElementById("status");
+  const rows = document.getElementById("rows");
+  const rawText = document.getElementById("rawText");
+  const progressWrap = document.getElementById("progressWrap");
+  const progressBar = document.getElementById("progressBar");
+  const progressLabel = document.getElementById("progressLabel");
+
+  let reader = null;
+  let cameraControls = null;
+  let scanningWanted = false;
+  let torchOn = false;
+  let currentCopyText = "";
+  let lastText = "";
+  let lastTextAt = 0;
+  let processingImage = false;
+
+  showWaiting();
+
+  function getReader() {
+    if (!window.ZXingBrowser) {
+      throw new Error("二维码引擎没有加载，请检查网络后刷新网页。");
+    }
+    if (!reader) {
+      reader = new ZXingBrowser.BrowserQRCodeReader();
+    }
+    return reader;
+  }
+
+  function setStatus(message, type = "") {
+    status.textContent = message;
+    status.className = "status" + (type ? " " + type : "");
+  }
+
+  function setProgress(visible, percent = 0, label = "") {
+    progressWrap.style.display = visible ? "block" : "none";
+    progressBar.style.width = Math.max(0, Math.min(100, percent)) + "%";
+    progressLabel.textContent = label;
+  }
+
+  async function startCamera() {
+    stopCamera();
+
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      setStatus(
+        "摄像头必须通过 HTTPS 网址打开。电脑本机 localhost 也可以测试。",
+        "bad"
+      );
+      return;
+    }
+
+    try {
+      getReader();
+      scanningWanted = true;
+      previewImage.style.display = "none";
+      video.style.display = "block";
+      cameraState.textContent = "正在请求摄像头权限……";
+      setStatus("请在浏览器弹窗中允许使用摄像头。");
+
+      const constraints = {
+        audio: false,
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        }
+      };
+
+      cameraControls = await reader.decodeFromConstraints(
+        constraints,
+        video,
+        (result, error, controls) => {
+          if (!scanningWanted || !result) return;
+          handleResult(result, "摄像头");
+          scanningWanted = false;
+          try { controls.stop(); } catch (_) {}
+          cameraControls = null;
+          updateCameraButtons(false);
+          cameraState.textContent = "识别成功，摄像头已暂停";
+          continueButton.disabled = false;
+        }
+      );
+
+      updateCameraButtons(true);
+      cameraState.textContent = "摄像头运行中";
+      setStatus("让二维码尽量填满方框，保持稳定并等待自动对焦。");
+      torchButton.disabled = !cameraControls ||
+        typeof cameraControls.switchTorch !== "function";
+    } catch (error) {
+      stopCamera();
+      setStatus(cameraErrorText(error), "bad");
+      cameraState.textContent = "摄像头启动失败";
+    }
+  }
+
+  function stopCamera() {
+    scanningWanted = false;
+    torchOn = false;
+
+    if (cameraControls) {
+      try { cameraControls.stop(); } catch (_) {}
+      cameraControls = null;
+    }
+
+    if (video.srcObject) {
+      for (const track of video.srcObject.getTracks()) {
+        try { track.stop(); } catch (_) {}
+      }
+      video.srcObject = null;
+    }
+
+    updateCameraButtons(false);
+    torchButton.textContent = "手电筒";
+    cameraState.textContent = "摄像头已停止";
+  }
+
+  function updateCameraButtons(running) {
+    cameraButton.disabled = running;
+    stopButton.disabled = !running;
+    torchButton.disabled = !running;
+  }
+
+  async function toggleTorch() {
+    if (!cameraControls || typeof cameraControls.switchTorch !== "function") {
+      setStatus("当前浏览器或摄像头不支持网页控制手电筒。", "warn");
+      return;
+    }
+
+    try {
+      await cameraControls.switchTorch();
+      torchOn = !torchOn;
+      torchButton.textContent = torchOn ? "关闭手电筒" : "手电筒";
+    } catch (error) {
+      setStatus("手电筒开启失败：" + safeMessage(error), "warn");
+    }
+  }
+
+  function continueScanning() {
+    continueButton.disabled = true;
+    startCamera();
+  }
+
+  async function onFileSelected(event) {
+    const file = event.target.files?.[0];
+    fileInput.value = "";
+    if (!file || processingImage) return;
+
+    stopCamera();
+    processingImage = true;
+    previewImage.style.display = "block";
+    video.style.display = "none";
+    cameraState.textContent = "正在解析相册图片";
+    continueButton.disabled = true;
+
+    try {
+      const bitmap = await loadImage(file);
+      previewImage.src = URL.createObjectURL(file);
+      setStatus("正在进行相册增强识别，请稍候……");
+      setProgress(true, 2, "读取图片");
+
+      const result = await decodeGalleryBitmap(bitmap);
+      if (bitmap.close) bitmap.close();
+
+      if (!result) {
+        setProgress(false);
+        setStatus(
+          "没有识别到二维码。请尽量使用原图，或先在相册中裁剪到二维码附近再试。",
+          "bad"
+        );
+        cameraState.textContent = "相册图片识别失败";
+        return;
+      }
+
+      handleResult(result.result, "相册图片", result.stage);
+      setProgress(false);
+      cameraState.textContent = "相册图片识别成功";
+      continueButton.disabled = false;
+    } catch (error) {
+      setProgress(false);
+      setStatus("相册图片解析失败：" + safeMessage(error), "bad");
+      cameraState.textContent = "相册图片解析失败";
+    } finally {
+      processingImage = false;
+    }
+  }
+
+  async function loadImage(file) {
+    if ("createImageBitmap" in window) {
+      try {
+        return await createImageBitmap(file, { imageOrientation: "from-image" });
+      } catch (_) {
+        return await createImageBitmap(file);
+      }
+    }
+
+    return await new Promise((resolve, reject) => {
+      const image = new Image();
+      const url = URL.createObjectURL(file);
+      image.onload = () => {
+        URL.revokeObjectURL(url);
+        resolve(image);
+      };
+      image.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("无法读取图片"));
+      };
+      image.src = url;
+    });
+  }
+
+  async function decodeGalleryBitmap(source) {
+    const maxSourceEdge = 3200;
+    const sourceCanvas = drawSourceToCanvas(source, maxSourceEdge);
+    const candidateRects = findCandidateRects(sourceCanvas);
+    const rotations = [0, 90, 270, 180];
+
+    const total = candidateRects.length * rotations.length * 8;
+    let attempt = 0;
+
+    for (let c = 0; c < candidateRects.length; c++) {
+      const rect = candidateRects[c];
+      const crop = cropCanvas(sourceCanvas, rect, 1700);
+
+      for (const rotation of rotations) {
+        const rotated = rotateCanvas(crop, rotation);
+        const variants = buildVariants(rotated);
+
+        for (let v = 0; v < variants.length; v++) {
+          attempt++;
+          const label =
+            `候选区域 ${c + 1}/${candidateRects.length} · ` +
+            `${rotation}° · ${variants[v].name}`;
+
+          setProgress(
+            true,
+            Math.min(98, Math.round(attempt / total * 100)),
+            label
+          );
+
+          const decoded = await tryDecodeCanvas(variants[v].canvas);
+          if (decoded) {
+            recycleVariants(variants);
+            return {
+              result: decoded,
+              stage: label
+            };
+          }
+
+          // Give Safari time to repaint and avoid a long frozen screen.
+          if (attempt % 3 === 0) {
+            await nextFrame();
+          }
+        }
+
+        recycleVariants(variants);
+      }
+    }
+
+    return null;
+  }
+
+  function drawSourceToCanvas(source, maxEdge) {
+    const sourceWidth = source.width || source.naturalWidth;
+    const sourceHeight = source.height || source.naturalHeight;
+    const scale = Math.min(1, maxEdge / Math.max(sourceWidth, sourceHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(sourceWidth * scale));
+    canvas.height = Math.max(1, Math.round(sourceHeight * scale));
+    canvas.getContext("2d", { willReadFrequently: true })
+      .drawImage(source, 0, 0, canvas.width, canvas.height);
+    return canvas;
+  }
+
+  function findCandidateRects(sourceCanvas) {
+    const width = sourceCanvas.width;
+    const height = sourceCanvas.height;
+    const candidates = [
+      { x: 0, y: 0, w: width, h: height, score: 100000 },
+      rectByRatio(width, height, .05, .15, .95, .95, 9000),
+      rectByRatio(width, height, .08, .30, .92, .99, 8500),
+      rectByRatio(width, height, .08, .03, .92, .74, 8000)
+    ];
+
+    const search = scaleCanvas(sourceCanvas, 480);
+    const ctx = search.getContext("2d", { willReadFrequently: true });
+    const image = ctx.getImageData(0, 0, search.width, search.height);
+    const pixels = image.data;
+    const count = search.width * search.height;
+    const red = new Uint8Array(count);
+    const histogram = new Uint32Array(256);
+
+    for (let i = 0, p = 0; i < pixels.length; i += 4, p++) {
+      const value = pixels[i];
+      red[p] = value;
+      histogram[value]++;
+    }
+
+    const threshold = otsuFromHistogram(histogram, count);
+    const dark = new Uint8Array(count);
+    for (let i = 0; i < count; i++) {
+      dark[i] = red[i] < threshold ? 1 : 0;
+    }
+
+    const sw = search.width;
+    const sh = search.height;
+    const stride = sw + 1;
+    const darkIntegral = new Uint32Array((sw + 1) * (sh + 1));
+    const transitionIntegral = new Uint32Array((sw + 1) * (sh + 1));
+
+    for (let y = 0; y < sh; y++) {
+      let rowDark = 0;
+      let rowTransition = 0;
+
+      for (let x = 0; x < sw; x++) {
+        const index = y * sw + x;
+        rowDark += dark[index];
+
+        let transition = 0;
+        if (x > 0 && dark[index] !== dark[index - 1]) transition = 1;
+        if (y > 0 && dark[index] !== dark[index - sw]) transition = 1;
+        rowTransition += transition;
+
+        const ii = (y + 1) * stride + x + 1;
+        darkIntegral[ii] = darkIntegral[y * stride + x + 1] + rowDark;
+        transitionIntegral[ii] =
+          transitionIntegral[y * stride + x + 1] + rowTransition;
+      }
+    }
+
+    const minDim = Math.min(sw, sh);
+    const percents = [20, 27, 35, 45, 57, 68];
+
+    for (const percent of percents) {
+      const size = Math.max(65, Math.round(minDim * percent / 100));
+      const step = Math.max(12, Math.round(size / 6));
+
+      for (let y = 0; y + size <= sh; y += step) {
+        for (let x = 0; x + size <= sw; x += step) {
+          const area = size * size;
+          const darkCount = sumIntegral(
+            darkIntegral, stride, x, y, x + size, y + size
+          );
+          const transitions = sumIntegral(
+            transitionIntegral, stride, x, y, x + size, y + size
+          );
+          const density = darkCount / area;
+          const transitionDensity = transitions / area;
+
+          if (density < .15 || density > .78 || transitionDensity < .05) {
+            continue;
+          }
+
+          const densityScore =
+            1 - Math.min(1, Math.abs(density - .44) / .44);
+          const score =
+            transitionDensity * 7000 + densityScore * 850 + size * .2;
+
+          const scaleX = width / sw;
+          const scaleY = height / sh;
+          const mapped = expandRect({
+            x: Math.round(x * scaleX),
+            y: Math.round(y * scaleY),
+            w: Math.round(size * scaleX),
+            h: Math.round(size * scaleY),
+            score
+          }, width, height, .14);
+
+          candidates.push(mapped);
+        }
+      }
+    }
+
+    candidates.sort((a, b) => b.score - a.score);
+
+    const selected = [];
+    for (const candidate of candidates) {
+      if (selected.some(old => intersectionOverUnion(candidate, old) > .64)) {
+        continue;
+      }
+      selected.push(candidate);
+      if (selected.length >= 12) break;
+    }
+
+    return selected;
+  }
+
+  function rectByRatio(width, height, l, t, r, b, score) {
+    return {
+      x: Math.round(width * l),
+      y: Math.round(height * t),
+      w: Math.round(width * (r - l)),
+      h: Math.round(height * (b - t)),
+      score
+    };
+  }
+
+  function expandRect(rect, maxWidth, maxHeight, fraction) {
+    const dx = Math.round(rect.w * fraction);
+    const dy = Math.round(rect.h * fraction);
+    const x = Math.max(0, rect.x - dx);
+    const y = Math.max(0, rect.y - dy);
+    const right = Math.min(maxWidth, rect.x + rect.w + dx);
+    const bottom = Math.min(maxHeight, rect.y + rect.h + dy);
+    return {
+      x, y,
+      w: Math.max(1, right - x),
+      h: Math.max(1, bottom - y),
+      score: rect.score
+    };
+  }
+
+  function intersectionOverUnion(a, b) {
+    const left = Math.max(a.x, b.x);
+    const top = Math.max(a.y, b.y);
+    const right = Math.min(a.x + a.w, b.x + b.w);
+    const bottom = Math.min(a.y + a.h, b.y + b.h);
+    const intersection =
+      Math.max(0, right - left) * Math.max(0, bottom - top);
+    const union = a.w * a.h + b.w * b.h - intersection;
+    return union <= 0 ? 0 : intersection / union;
+  }
+
+  function sumIntegral(integral, stride, left, top, right, bottom) {
+    return integral[bottom * stride + right]
+      - integral[top * stride + right]
+      - integral[bottom * stride + left]
+      + integral[top * stride + left];
+  }
+
+  function cropCanvas(source, rect, maxEdge) {
+    const scale = Math.min(1, maxEdge / Math.max(rect.w, rect.h));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(rect.w * scale));
+    canvas.height = Math.max(1, Math.round(rect.h * scale));
+    canvas.getContext("2d", { willReadFrequently: true }).drawImage(
+      source,
+      rect.x, rect.y, rect.w, rect.h,
+      0, 0, canvas.width, canvas.height
+    );
+    return canvas;
+  }
+
+  function rotateCanvas(source, degrees) {
+    if (degrees === 0) return cloneCanvas(source);
+
+    const canvas = document.createElement("canvas");
+    const swap = degrees === 90 || degrees === 270;
+    canvas.width = swap ? source.height : source.width;
+    canvas.height = swap ? source.width : source.height;
+
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate(degrees * Math.PI / 180);
+    ctx.drawImage(source, -source.width / 2, -source.height / 2);
+    return canvas;
+  }
+
+  function cloneCanvas(source) {
+    const canvas = document.createElement("canvas");
+    canvas.width = source.width;
+    canvas.height = source.height;
+    canvas.getContext("2d", { willReadFrequently: true })
+      .drawImage(source, 0, 0);
+    return canvas;
+  }
+
+  function scaleCanvas(source, maxEdge) {
+    const scale = Math.min(1, maxEdge / Math.max(source.width, source.height));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(source.width * scale));
+    canvas.height = Math.max(1, Math.round(source.height * scale));
+    canvas.getContext("2d", { willReadFrequently: true })
+      .drawImage(source, 0, 0, canvas.width, canvas.height);
+    return canvas;
+  }
+
+  function buildVariants(source) {
+    const original = cloneCanvas(source);
+    const gray = channelCanvas(source, "gray");
+    const red = channelCanvas(source, "red");
+    const grayContrast = autoContrastCanvas(gray);
+    const redContrast = autoContrastCanvas(red);
+    const grayOtsu = thresholdCanvas(grayContrast, otsuCanvas(grayContrast));
+    const redOtsu = thresholdCanvas(redContrast, otsuCanvas(redContrast));
+    const redThreshold = thresholdCanvas(redContrast, 165);
+
+    return [
+      { name: "原图", canvas: original },
+      { name: "灰度", canvas: gray },
+      { name: "红通道", canvas: red },
+      { name: "灰度增强", canvas: grayContrast },
+      { name: "红通道增强", canvas: redContrast },
+      { name: "灰度Otsu", canvas: grayOtsu },
+      { name: "红通道Otsu", canvas: redOtsu },
+      { name: "红通道阈值165", canvas: redThreshold }
+    ];
+  }
+
+  function channelCanvas(source, mode) {
+    const canvas = cloneCanvas(source);
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = image.data;
+
+    for (let i = 0; i < data.length; i += 4) {
+      let value;
+      if (mode === "red") {
+        value = data[i];
+      } else {
+        value = Math.round(
+          data[i] * .299 + data[i + 1] * .587 + data[i + 2] * .114
+        );
+      }
+      data[i] = value;
+      data[i + 1] = value;
+      data[i + 2] = value;
+    }
+
+    ctx.putImageData(image, 0, 0);
+    return canvas;
+  }
+
+  function autoContrastCanvas(source) {
+    const canvas = cloneCanvas(source);
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = image.data;
+    const histogram = new Uint32Array(256);
+
+    for (let i = 0; i < data.length; i += 4) {
+      histogram[data[i]]++;
+    }
+
+    const total = canvas.width * canvas.height;
+    const lowTarget = Math.max(1, Math.round(total * .02));
+    const highTarget = Math.max(1, Math.round(total * .98));
+    let cumulative = 0;
+    let low = 0;
+    let high = 255;
+
+    for (let i = 0; i < 256; i++) {
+      cumulative += histogram[i];
+      if (cumulative >= lowTarget) {
+        low = i;
+        break;
+      }
+    }
+
+    cumulative = 0;
+    for (let i = 0; i < 256; i++) {
+      cumulative += histogram[i];
+      if (cumulative >= highTarget) {
+        high = i;
+        break;
+      }
+    }
+
+    if (high > low + 8) {
+      for (let i = 0; i < data.length; i += 4) {
+        const value = Math.max(
+          0,
+          Math.min(255, Math.round((data[i] - low) * 255 / (high - low)))
+        );
+        data[i] = value;
+        data[i + 1] = value;
+        data[i + 2] = value;
+      }
+      ctx.putImageData(image, 0, 0);
+    }
+
+    return canvas;
+  }
+
+  function thresholdCanvas(source, threshold) {
+    const canvas = cloneCanvas(source);
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = image.data;
+
+    for (let i = 0; i < data.length; i += 4) {
+      const value = data[i] < threshold ? 0 : 255;
+      data[i] = value;
+      data[i + 1] = value;
+      data[i + 2] = value;
+    }
+
+    ctx.putImageData(image, 0, 0);
+    return canvas;
+  }
+
+  function otsuCanvas(canvas) {
+    const data = canvas.getContext("2d", { willReadFrequently: true })
+      .getImageData(0, 0, canvas.width, canvas.height).data;
+    const histogram = new Uint32Array(256);
+
+    for (let i = 0; i < data.length; i += 4) {
+      histogram[data[i]]++;
+    }
+
+    return otsuFromHistogram(histogram, canvas.width * canvas.height);
+  }
+
+  function otsuFromHistogram(histogram, total) {
+    let sum = 0;
+    for (let i = 0; i < 256; i++) {
+      sum += i * histogram[i];
+    }
+
+    let sumBackground = 0;
+    let weightBackground = 0;
+    let bestVariance = -1;
+    let bestThreshold = 128;
+
+    for (let threshold = 0; threshold < 256; threshold++) {
+      weightBackground += histogram[threshold];
+      if (!weightBackground) continue;
+
+      const weightForeground = total - weightBackground;
+      if (!weightForeground) break;
+
+      sumBackground += threshold * histogram[threshold];
+      const meanBackground = sumBackground / weightBackground;
+      const meanForeground = (sum - sumBackground) / weightForeground;
+      const difference = meanBackground - meanForeground;
+      const variance =
+        weightBackground * weightForeground * difference * difference;
+
+      if (variance > bestVariance) {
+        bestVariance = variance;
+        bestThreshold = threshold;
+      }
+    }
+
+    return bestThreshold;
+  }
+
+  async function tryDecodeCanvas(canvas) {
+    try {
+      return await getReader().decodeFromCanvas(canvas);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function recycleVariants(variants) {
+    for (const item of variants) {
+      item.canvas.width = 1;
+      item.canvas.height = 1;
+    }
+  }
+
+  function nextFrame() {
+    return new Promise(resolve =>
+      requestAnimationFrame(() => setTimeout(resolve, 0))
+    );
+  }
+
+  function handleResult(result, source, stage = "") {
+    const text = decodeResultText(result).trim();
+    if (!text) return;
+
+    const now = Date.now();
+    if (text === lastText && now - lastTextAt < 1800) return;
+    lastText = text;
+    lastTextAt = now;
+
+    renderResult(text);
+    continueButton.disabled = false;
+
+    const detail = stage ? `，处理方式：${stage}` : "";
+    setStatus(`${source}识别成功${detail}。`, "good");
+
+    if (navigator.vibrate) {
+      try { navigator.vibrate(80); } catch (_) {}
+    }
+  }
+
+  function decodeResultText(result) {
+    const fallback =
+      typeof result.getText === "function" ? result.getText() :
+      String(result.text || "");
+
+    let rawBytes = null;
+    try {
+      rawBytes =
+        typeof result.getRawBytes === "function" ? result.getRawBytes() :
+        result.rawBytes || null;
+    } catch (_) {}
+
+    if (!rawBytes || !rawBytes.length) return fallback;
+
+    const bytes = rawBytes instanceof Uint8Array
+      ? rawBytes
+      : new Uint8Array(rawBytes);
+
+    const candidates = [];
+    const encodings = [
+      "utf-8", "gb18030", "gbk", "big5", "shift_jis", "iso-8859-1"
+    ];
+
+    for (const encoding of encodings) {
+      try {
+        const decoded = new TextDecoder(encoding, { fatal: true }).decode(bytes);
+        candidates.push({ text: decoded, score: scoreText(decoded) });
+      } catch (_) {}
+    }
+
+    if (fallback) {
+      candidates.push({ text: fallback, score: scoreText(fallback) });
+    }
+
+    if (!candidates.length) return fallback;
+    candidates.sort((a, b) => b.score - a.score);
+    return candidates[0].text;
+  }
+
+  function scoreText(text) {
+    let score = 0;
+    let chinese = 0;
+    let printable = 0;
+    let controls = 0;
+
+    for (const ch of text) {
+      const code = ch.codePointAt(0);
+      if (code >= 0x4e00 && code <= 0x9fff) chinese++;
+      if (ch === "\n" || ch === "\r" || ch === "\t" || code >= 32) {
+        printable++;
+      } else {
+        controls++;
+      }
+    }
+
+    score += printable + chinese * 5 - controls * 25;
+    if (/^\s*[\{\[]/.test(text)) score += 80;
+
+    for (const key of EXPECTED_KEYS) {
+      if (text.includes(key)) score += 100;
+    }
+
+    for (const token of ["Ã", "Â", "¤", "×", "º", "Ê", "Ö", "Ï", "Ð", "�"]) {
+      score -= (text.split(token).length - 1) * 15;
+    }
+
+    return score;
+  }
+
+  function renderResult(text) {
+    rawText.textContent = text;
+    rows.innerHTML = "";
+
+    const parsed = parseLooseJson(text);
+    const copyLines = [];
+
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      for (const key of EXPECTED_KEYS) {
+        const value = displayValue(parsed[key]);
+        addRow(key, value);
+        copyLines.push(`${key}：${value}`);
+      }
+
+      for (const [key, rawValue] of Object.entries(parsed)) {
+        if (EXPECTED_KEYS.includes(key)) continue;
+        const value = displayValue(rawValue);
+        addRow(key, value);
+        copyLines.push(`${key}：${value}`);
+      }
+    } else {
+      addRow("解析结果", text);
+      copyLines.push(text);
+    }
+
+    currentCopyText =
+      copyLines.join("\n") + "\n\n二维码原始内容：\n" + text;
+  }
+
+  function parseLooseJson(text) {
+    let fixed = text.trim().replace(/^\uFEFF/, "");
+    if (!fixed.startsWith("{")) return null;
+
+    fixed = fixed
+      .replace(/(^|[,:{\[]\s*)NULL(?=\s*[,}\]])/gi, "$1null")
+      .replace(/(^|[,:{\[]\s*)TRUE(?=\s*[,}\]])/gi, "$1true")
+      .replace(/(^|[,:{\[]\s*)FALSE(?=\s*[,}\]])/gi, "$1false");
+
+    try {
+      return JSON.parse(fixed);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function displayValue(value) {
+    if (value === null || value === undefined || value === "") return "空";
+    if (typeof value === "object") {
+      try { return JSON.stringify(value, null, 2); } catch (_) {}
+    }
+    return String(value);
+  }
+
+  function addRow(field, value) {
+    const row = document.createElement("div");
+    row.className = "row";
+
+    const fieldElement = document.createElement("div");
+    fieldElement.className = "field";
+    fieldElement.textContent = field;
+
+    const valueElement = document.createElement("div");
+    valueElement.className = "value";
+    valueElement.textContent = value;
+
+    row.append(fieldElement, valueElement);
+    rows.appendChild(row);
+  }
+
+  function showWaiting() {
+    rows.innerHTML = "";
+    addRow("状态", "等待扫描二维码");
+  }
+
+  async function copyResult() {
+    if (!currentCopyText) {
+      setStatus("目前没有可复制的结果。", "warn");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(currentCopyText);
+      setStatus("结果已复制。", "good");
+    } catch (_) {
+      const area = document.createElement("textarea");
+      area.value = currentCopyText;
+      area.style.position = "fixed";
+      area.style.opacity = "0";
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand("copy");
+      area.remove();
+      setStatus("结果已复制。", "good");
+    }
+  }
+
+  function clearResult() {
+    currentCopyText = "";
+    lastText = "";
+    rawText.textContent = "等待扫描……";
+    showWaiting();
+    setProgress(false);
+    setStatus("结果已清空。");
+    continueButton.disabled = true;
+  }
+
+  function cameraErrorText(error) {
+    const name = error?.name || "";
+    if (name === "NotAllowedError") {
+      return "没有取得摄像头权限。请在 Safari 地址栏的网站设置中允许摄像头。";
+    }
+    if (name === "NotFoundError") {
+      return "没有找到可用摄像头。";
+    }
+    if (name === "NotReadableError") {
+      return "摄像头可能正在被其他程序占用。";
+    }
+    return "摄像头启动失败：" + safeMessage(error);
+  }
+
+  function safeMessage(error) {
+    return error?.message || error?.name || String(error);
+  }
+
+  cameraButton.addEventListener("click", startCamera);
+  stopButton.addEventListener("click", stopCamera);
+  torchButton.addEventListener("click", toggleTorch);
+  continueButton.addEventListener("click", continueScanning);
+  fileInput.addEventListener("change", onFileSelected);
+  copyButton.addEventListener("click", copyResult);
+  clearButton.addEventListener("click", clearResult);
+
+  window.addEventListener("pagehide", stopCamera);
+
+  if ("serviceWorker" in navigator &&
+      (location.protocol === "https:" || location.hostname === "localhost")) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+    });
+  }
+})();
+</script>
+</body>
+</html>

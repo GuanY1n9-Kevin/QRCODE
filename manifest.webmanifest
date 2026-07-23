@@ -1,0 +1,25 @@
+{
+  "name": "POLYUNION 二维码解析",
+  "short_name": "二维码解析",
+  "description": "摄像头和相册二维码解析工具，图片只在本机浏览器内处理。",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#eef2f7",
+  "theme_color": "#0b1220",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "./icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "./icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

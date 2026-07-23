@@ -1,0 +1,170 @@
+把网页上传 GitHub Pages：一步一步操作
+============================================================
+
+第一部分：解压文件
+------------------
+
+1. 下载 POLYUNION_QR_WEB_V0.1_GitHub_Pages.zip。
+2. 右键压缩包，选择“全部解压”。
+3. 打开解压后的 POLYUNION_QR_WEB_V0.1 文件夹。
+4. 你应当直接看到：
+   index.html
+   manifest.webmanifest
+   service-worker.js
+   .nojekyll
+   icons 文件夹
+
+注意：
+上传GitHub时要上传这些文件本身，不要只上传外面那层文件夹。
+
+
+第二部分：建立 GitHub 仓库
+------------------------
+
+1. 电脑浏览器打开：
+   https://github.com
+
+2. 登录你的GitHub账号。
+
+3. 右上角点击“+”。
+
+4. 点击“New repository”。
+
+5. Repository name填写：
+   polyunion-qr-web
+
+6. 选择：
+   Public
+
+7. 其他选项先不要改。
+
+8. 点击：
+   Create repository
+
+
+第三部分：上传网页文件
+----------------------
+
+1. 进入刚刚建立的 polyunion-qr-web 仓库。
+
+2. 点击：
+   uploading an existing file
+
+   看不到时可以点击：
+   Add file
+   → Upload files
+
+3. 打开电脑上的 POLYUNION_QR_WEB_V0.1 文件夹。
+
+4. 同时选择以下内容并拖进GitHub上传区域：
+   index.html
+   manifest.webmanifest
+   service-worker.js
+   .nojekyll
+   icons 文件夹
+
+5. 等待所有文件显示完成。
+
+6. 页面下面“Commit changes”保持默认即可。
+
+7. 点击绿色按钮：
+   Commit changes
+
+
+第四部分：开启 GitHub Pages
+---------------------------
+
+1. 在仓库顶部点击：
+   Settings
+
+2. 左侧找到：
+   Pages
+
+3. 在“Build and deployment”区域，把 Source设置为：
+   Deploy from a branch
+
+4. Branch选择：
+   main
+
+5. 文件夹选择：
+   / (root)
+
+6. 点击：
+   Save
+
+7. 等待大约1至5分钟。
+
+8. 刷新Pages页面，看到：
+   Your site is live at ...
+
+9. 你的网址通常是：
+   https://你的GitHub用户名.github.io/polyunion-qr-web/
+
+
+第五部分：iPhone使用
+-------------------
+
+1. iPhone必须使用Safari打开GitHub Pages网址。
+
+2. 第一次点击“开启摄像头”时，选择：
+   允许
+
+3. 实时扫码：
+   点击“开启摄像头”
+   → 让二维码尽量填满方框
+   → 等待自动识别
+
+4. 相册图片：
+   点击“选择相册图片”
+   → 选择原始照片
+   → 等待增强识别完成
+
+5. 添加到桌面：
+   Safari底部点击“分享”
+   → 添加到主屏幕
+   → 添加
+
+6. 以后直接点击iPhone桌面上的“二维码解析”图标。
+
+
+第六部分：以后更新网页
+---------------------
+
+以后我给你新版本时，不需要重新建立仓库。
+
+操作：
+1. 打开原来的GitHub仓库。
+2. 点击 Add file → Upload files。
+3. 上传新版文件。
+4. 遇到同名文件时直接覆盖并提交。
+5. 等待GitHub Pages自动重新发布。
+6. iPhone重新打开网页。
+
+网页仍显示旧版时：
+1. 在Safari中刷新网页。
+2. 仍未更新时，删除主屏幕旧图标。
+3. Safari重新打开网址后再次添加到主屏幕。
+
+
+第七部分：常见问题
+-----------------
+
+1. 摄像头按钮不能用
+   必须通过 https:// 开头的GitHub Pages网址打开。
+   不要在微信内置浏览器中打开，使用Safari。
+
+2. 相册图片扫不出来
+   尽量选择原图，不要选择微信压缩过的图片。
+   可以先在iPhone相册中裁剪到二维码附近。
+
+3. 中文乱码
+   程序会自动尝试GB18030和GBK。
+   若仍乱码，把二维码原始内容截图发给开发者检查。
+
+4. GitHub Pages显示404
+   检查index.html是不是在仓库最外层。
+   检查Settings → Pages是否选择main和/(root)。
+
+5. 修改后网页没变化
+   GitHub Pages发布需要时间。
+   等1至5分钟再刷新。
