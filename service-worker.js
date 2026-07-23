@@ -1,4 +1,4 @@
-const CACHE_NAME = "polyunion-qr-web-v0.4";
+const CACHE_NAME = "polyunion-qr-web-v0.5";
 const LOCAL_ASSETS = [
   "./",
   "./index.html",
@@ -28,18 +28,23 @@ self.addEventListener("activate", event => {
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
 
-  const requestUrl = new URL(event.request.url);
-  const sameOrigin = requestUrl.origin === self.location.origin;
+  const url = new URL(event.request.url);
+  const sameOrigin = url.origin === self.location.origin;
 
   if (event.request.mode === "navigate" || sameOrigin) {
     event.respondWith(
       fetch(event.request)
         .then(response => {
           const copy = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy)).catch(() => {});
+          caches.open(CACHE_NAME)
+            .then(cache => cache.put(event.request, copy))
+            .catch(() => {});
           return response;
         })
-        .catch(() => caches.match(event.request).then(cached => cached || caches.match("./index.html")))
+        .catch(() =>
+          caches.match(event.request)
+            .then(cached => cached || caches.match("./index.html"))
+        )
     );
     return;
   }
@@ -47,9 +52,12 @@ self.addEventListener("fetch", event => {
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
+
       return fetch(event.request).then(response => {
         const copy = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy)).catch(() => {});
+        caches.open(CACHE_NAME)
+          .then(cache => cache.put(event.request, copy))
+          .catch(() => {});
         return response;
       });
     })
