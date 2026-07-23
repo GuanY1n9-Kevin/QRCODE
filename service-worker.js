@@ -1,4 +1,4 @@
-const CACHE_NAME = "polyunion-qr-web-v0.6";
+const CACHE_NAME = "polyunion-qr-web-v0.7";
 const APP_ASSETS = [
   "./",
   "./index.html",

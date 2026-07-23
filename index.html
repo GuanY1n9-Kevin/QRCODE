@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="二维码解析">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <title>POLYUNION 二维码解析 V0.5</title>
+  <title>POLYUNION 二维码解析 V0.7</title>
 
   <style>
     :root {
@@ -516,7 +516,7 @@
     <h1>POLYUNION 二维码解析</h1>
     <div id="engineBadge" class="engine-badge">正在加载本地C++引擎</div>
   </header>
-  <div class="version">网页版 V0.6 · 本地ZXing-C++与OpenCV · 不依赖外部CDN</div>
+  <div class="version">网页版 V0.7 · 继续扫描修复 · 本地ZXing-C++与OpenCV</div>
 
   <main class="layout">
     <section class="panel camera-panel">
@@ -678,6 +678,7 @@
   let lastDecodedText = "";
   let lastDecodedAt = 0;
   let abortToken = 0;
+  let cameraStarting = false;
 
   showWaiting();
   prewarmEngine();
@@ -812,12 +813,16 @@
   }
 
   async function startCamera() {
+    if (cameraStarting) return;
+    cameraStarting = true;
+
     closeOutcome();
     clearBestFrame();
     abortToken++;
     const token = abortToken;
 
     if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      cameraStarting = false;
       setStatus("摄像头必须通过HTTPS网址打开。", "bad");
       return;
     }
@@ -869,6 +874,8 @@
       stopCamera(false);
       setStatus(cameraErrorText(error), "bad");
       cameraState.textContent = "摄像头启动失败";
+    } finally {
+      cameraStarting = false;
     }
   }
 
@@ -2353,13 +2360,14 @@
   }
 
   function completeSuccess(hit, source) {
+    // Scanning always stops after one accepted result, so an additional
+    // duplicate filter is unnecessary. The old filter caused iPhone Safari to
+    // appear frozen after “继续扫描” when the previous QR was still in view.
     abortToken++;
     stopCamera(false);
 
-    const now = Date.now();
-    if (hit.text === lastDecodedText && now - lastDecodedAt < 1800) return;
     lastDecodedText = hit.text;
-    lastDecodedAt = now;
+    lastDecodedAt = Date.now();
 
     renderResult(hit.text);
     setProgress(false);
@@ -2482,8 +2490,25 @@
   }
 
   function continueFromOutcome() {
+    if (cameraStarting) return;
+
     closeOutcome();
-    startCamera();
+    clearBestFrame();
+
+    // A new scan is an explicit new session. Clear the previous-code guard so
+    // the same physical label can also be scanned again deliberately.
+    lastDecodedText = "";
+    lastDecodedAt = 0;
+
+    cameraState.textContent = "正在重新启动摄像头";
+    setStatus("正在准备下一次扫描……");
+
+    // Give iPhone Safari a brief moment to release the previous camera track.
+    // Starting immediately after track.stop() can occasionally leave the new
+    // getUserMedia request waiting indefinitely.
+    setTimeout(() => {
+      startCamera();
+    }, 220);
   }
 
   function showWaiting() {
@@ -2617,7 +2642,7 @@
   fileInput.addEventListener("change", onFileSelected);
   copyButton.addEventListener("click", copyResult);
   clearButton.addEventListener("click", clearResult);
-  continueButton.addEventListener("click", startCamera);
+  continueButton.addEventListener("click", continueFromOutcome);
 
   outcomeCopyButton.addEventListener("click", copyResult);
   outcomeCloseButton.addEventListener("click", closeOutcome);
@@ -2636,7 +2661,7 @@
       (location.protocol === "https:" || location.hostname === "localhost")) {
     window.addEventListener("load", () => {
       navigator.serviceWorker.register(
-        "./service-worker.js?v=0.6",
+        "./service-worker.js?v=0.7",
         { updateViaCache: "none" }
       ).catch(() => {});
     });
