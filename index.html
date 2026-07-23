@@ -452,7 +452,7 @@
   <header class="topbar">
     <div class="title-wrap">
       <h1>POLYUNION 二维码解析</h1>
-      <div class="subtitle">网页版 V0.2 · iPhone摄像头增强 · 图片不上传</div>
+      <div class="subtitle">网页版 V0.3 · iPhone摄像头增强 · GBK中文修复</div>
     </div>
     <div class="privacy">图片不上传</div>
   </header>
@@ -1485,31 +1485,91 @@
         result.rawBytes || null;
     } catch (_) {}
 
-    if (!rawBytes || !rawBytes.length) return fallback;
-
-    const bytes = rawBytes instanceof Uint8Array
-      ? rawBytes
-      : new Uint8Array(rawBytes);
-
     const candidates = [];
     const encodings = [
       "utf-8", "gb18030", "gbk", "big5", "shift_jis", "iso-8859-1"
     ];
 
-    for (const encoding of encodings) {
-      try {
-        const decoded = new TextDecoder(encoding, { fatal: true }).decode(bytes);
-        candidates.push({ text: decoded, score: scoreText(decoded) });
-      } catch (_) {}
+    // ZXing-JS's rawBytes can contain QR data codewords rather than only the
+    // original text payload. Keep it as a candidate, but do not rely on it.
+    if (rawBytes && rawBytes.length) {
+      const bytes = rawBytes instanceof Uint8Array
+        ? rawBytes
+        : new Uint8Array(rawBytes);
+      addByteDecodeCandidates(candidates, bytes, encodings, "rawBytes");
     }
 
+    // Critical fix for this factory QR format:
+    // The QR payload is GBK/GB18030 but contains no usable ECI declaration.
+    // ZXing-JS therefore returns text such as "¹¤×÷µ¥ºÅ". Those visible
+    // characters are the original GBK bytes interpreted as Latin-1/Windows-1252.
+    // Convert the mojibake characters back to bytes, then decode as GB18030.
     if (fallback) {
-      candidates.push({ text: fallback, score: scoreText(fallback) });
+      const restoredBytes = legacyMojibakeToBytes(fallback);
+      if (restoredBytes) {
+        addByteDecodeCandidates(
+          candidates,
+          restoredBytes,
+          ["gb18030", "gbk", "utf-8", "big5"],
+          "mojibake-repair"
+        );
+      }
+      candidates.push({
+        text: fallback,
+        score: scoreText(fallback),
+        source: "ZXing text"
+      });
     }
 
     if (!candidates.length) return fallback;
     candidates.sort((a, b) => b.score - a.score);
     return candidates[0].text;
+  }
+
+  function addByteDecodeCandidates(output, bytes, encodings, source) {
+    let end = bytes.length;
+    while (end > 0 && bytes[end - 1] === 0) end--;
+    const clean = end === bytes.length ? bytes : bytes.slice(0, end);
+
+    for (const encoding of encodings) {
+      try {
+        const text = new TextDecoder(encoding, { fatal: true }).decode(clean);
+        output.push({
+          text,
+          score: scoreText(text),
+          source: `${source}/${encoding}`
+        });
+      } catch (_) {}
+    }
+  }
+
+  function legacyMojibakeToBytes(text) {
+    const cp1252Reverse = new Map([
+      [0x20AC, 0x80], [0x201A, 0x82], [0x0192, 0x83],
+      [0x201E, 0x84], [0x2026, 0x85], [0x2020, 0x86],
+      [0x2021, 0x87], [0x02C6, 0x88], [0x2030, 0x89],
+      [0x0160, 0x8A], [0x2039, 0x8B], [0x0152, 0x8C],
+      [0x017D, 0x8E], [0x2018, 0x91], [0x2019, 0x92],
+      [0x201C, 0x93], [0x201D, 0x94], [0x2022, 0x95],
+      [0x2013, 0x96], [0x2014, 0x97], [0x02DC, 0x98],
+      [0x2122, 0x99], [0x0161, 0x9A], [0x203A, 0x9B],
+      [0x0153, 0x9C], [0x017E, 0x9E], [0x0178, 0x9F]
+    ]);
+
+    const bytes = [];
+    for (const char of text) {
+      const code = char.codePointAt(0);
+      if (code <= 0xFF) {
+        bytes.push(code);
+      } else if (cp1252Reverse.has(code)) {
+        bytes.push(cp1252Reverse.get(code));
+      } else {
+        // Already-correct CJK or another real Unicode character means this
+        // string is not a pure Latin-1/Windows-1252 mojibake representation.
+        return null;
+      }
+    }
+    return new Uint8Array(bytes);
   }
 
   function scoreText(text) {
@@ -1680,7 +1740,7 @@
   if ("serviceWorker" in navigator &&
       (location.protocol === "https:" || location.hostname === "localhost")) {
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./service-worker.js?v=0.2", { updateViaCache: "none" }).catch(() => {});
+      navigator.serviceWorker.register("./service-worker.js?v=0.3", { updateViaCache: "none" }).catch(() => {});
     });
   }
 })();
